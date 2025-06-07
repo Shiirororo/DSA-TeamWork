@@ -55,7 +55,7 @@ typedef struct Project {
     char startDate[20];
     char endDate[20];
     int status; //0: Pending, 1: Inprogress, 2: Completed, 3: Cancelled
-    Member members[10];
+    //Member members[10];
     Task* tasks;
 } Project;
 

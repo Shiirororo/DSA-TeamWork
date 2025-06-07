@@ -82,6 +82,8 @@ EXPORT char* get_next_project_id(const char* path) {
     return original;
 }
 
+
+
 EXPORT void save_project_to_json(const Project *project) {
     if (project == NULL) return;
 
@@ -143,7 +145,7 @@ EXPORT void save_project_to_json(const Project *project) {
     // Chuyển thành chuỗi và ghi ra file
     char *json_str = cJSON_Print(json);
     if (json_str != NULL) {
-        FILE *file = fopen("data_store/project.json", "a");
+        FILE *file = fopen(JSON_PROJECT_FILE, "a"); // SỬA DÒNG NÀY
         if (file != NULL) {
             fprintf(file, "%s\n", json_str);
             fclose(file);
@@ -158,23 +160,44 @@ EXPORT void save_project_to_json(const Project *project) {
     // Giải phóng bộ nhớ
     cJSON_Delete(json);
 }
-Task make_task (const char *projectID, const char *title, const char *description, const char *assigneeID, const char *dueDate) {
-    Task task;
-    memset(&task, 0, sizeof(Task));  // Đảm bảo struct không chứa dữ liệu rác
-    //Gán trường cơ bản:
-    strncpy(task.title, title, sizeof(task.title) - 1);
-    task.title[sizeof(task.title) - 1] = '\0'; // Đảm bảo kết thúc chuỗi
-    strncpy(task.description, description, sizeof(task.description) - 1);
-    task.description[sizeof(task.description) - 1] = '\0'; // Đảm bảo kết thúc chuỗi
-    task.status = 0; //Auto là Todo
-    strncpy(task.dueDate, dueDate, sizeof(task.dueDate) - 1);
-    task.dueDate[sizeof(task.dueDate) - 1] = '\0';
-    //INSERT ID của thằng đảm nhiệm vòa đây
+// Task make_task (const char *projectID, const char *title, const char *description, const char *assigneeID, const char *dueDate) {
+//     Task task;
+//     memset(&task, 0, sizeof(Task));  // Đảm bảo struct không chứa dữ liệu rác
+//     //Gán trường cơ bản:
+//     strncpy(task.title, title, sizeof(task.title) - 1);
+//     task.title[sizeof(task.title) - 1] = '\0'; // Đảm bảo kết thúc chuỗi
+//     strncpy(task.description, description, sizeof(task.description) - 1);
+//     task.description[sizeof(task.description) - 1] = '\0'; // Đảm bảo kết thúc chuỗi
+//     task.status = 0; //Auto là Todo
+//     strncpy(task.dueDate, dueDate, sizeof(task.dueDate) - 1);
+//     task.dueDate[sizeof(task.dueDate) - 1] = '\0';
+//     //INSERT ID của thằng đảm nhiệm vòa đây
+//     return task;
 
-}
+// }
 // Check tất cả các thông tin nhập vào cho 1 dự án
 
+Task make_task(char *taskID, char *projectID, char *title, char *description, char *assigneeID, char *dueDate, int status) {
+    Task task;
+    memset(&task, 0, sizeof(Task));  // Đảm bảo struct không chứa dữ liệu rác
 
+    // Gán các trường cơ bản
+    strncpy(task.taskID, taskID, sizeof(task.taskID) - 1);
+    task.taskID[sizeof(task.taskID) - 1] = '\0'; // Đảm bảo kết thúc chuỗi
+    strncpy(task.projectID, projectID, sizeof(task.projectID) - 1);
+    task.projectID[sizeof(task.projectID) - 1] = '\0';
+    strncpy(task.title, title, sizeof(task.title) - 1);
+    task.title[sizeof(task.title) - 1] = '\0';
+    strncpy(task.description, description, sizeof(task.description) - 1);
+    task.description[sizeof(task.description) - 1] = '\0';
+    strncpy (task.assigneeID, assigneeID, sizeof(task.assigneeID) - 1);
+    task.assigneeID[sizeof(task.assigneeID) - 1] = '\0';
+    strncpy(task.dueDate, dueDate, sizeof(task.dueDate) - 1);   
+    task.dueDate[sizeof(task.dueDate) - 1] = '\0';
+    task.status = status; // 0: Todo, 1: In Progress, 2: Done
+    task.next = NULL; // Khởi tạo con trỏ next là NULL
+    return task;
+}
 
 //Thay hàm này thành hàm chuẩn hóa
 // EXPORT int check_valid_name (const char *name) {
@@ -218,31 +241,81 @@ Task make_task (const char *projectID, const char *title, const char *descriptio
 
 
 
+// Project create_project(const char* creator, const char *name, const char *desc) {
+//     Project project;
+//     memset(&project, 0, sizeof(Project));  // Đảm bảo struct không chứa dữ liệu rác
 
-Project create_project(const char* creator, const char *name, const char *desc) {
+//     // Gán các trường cơ bản
+//     strncpy(project.name, name, sizeof(project.name) - 1);
+//     strncpy(project.description, desc, sizeof(project.description) - 1);
+//     project.description[sizeof(project.description) - 1] = '\0'; // Đảm bảo kết thúc chuỗi
+//     strncpy(project.ownerID, creator, sizeof(project.ownerID) - 1);
+//     project.ownerID[sizeof(project.ownerID) - 1] = '\0';
+//     project.status = 0;
+
+//     // Lấy project ID
+//     char *id = get_next_project_id(PATH_TO_LASTEST_ID);
+//     if (id == NULL) {
+//         fprintf(stderr, "Lỗi: Không thể tạo project ID.\n");
+//         exit(EXIT_FAILURE);  // Hoặc có thể trả về project trống tuỳ cách bạn muốn xử lý
+//     }
+
+//     // Gán ID một cách an toàn
+//     snprintf(project.projectID, sizeof(project.projectID), "%s", id);
+//     free(id);
+
+//     // TODO: save_Project_to_json(project);
+
+//     return project;
+// }
+
+
+EXPORT Project create_project(char *name, char *ownerID, char memberID[MAX_MEMBER][8], int currentMember, char *description, char *startDate, char *endDate, int status, Task *tasks) {
     Project project;
-    memset(&project, 0, sizeof(Project));  // Đảm bảo struct không chứa dữ liệu rác
+    memset(&project, 0, sizeof(Project));
 
-    // Gán các trường cơ bản
     strncpy(project.name, name, sizeof(project.name) - 1);
-    strncpy(project.description, desc, sizeof(project.description) - 1);
-    project.description[sizeof(project.description) - 1] = '\0'; // Đảm bảo kết thúc chuỗi
-    strncpy(project.ownerID, creator, sizeof(project.ownerID) - 1);
-    project.ownerID[sizeof(project.ownerID) - 1] = '\0';
-    project.status = 0;
+    project.name[sizeof(project.name) - 1] = '\0';
 
-    // Lấy project ID
+    // Lấy projectID tự động
     char *id = get_next_project_id(PATH_TO_LASTEST_ID);
     if (id == NULL) {
-        fprintf(stderr, "Lỗi: Không thể tạo project ID.\n");
-        exit(EXIT_FAILURE);  // Hoặc có thể trả về project trống tuỳ cách bạn muốn xử lý
+        fprintf(stderr, "Không thể lấy project ID\n");
+        exit(EXIT_FAILURE);
     }
-
-    // Gán ID một cách an toàn
-    snprintf(project.projectID, sizeof(project.projectID), "%s", id);
+    strncpy(project.projectID, id, sizeof(project.projectID) - 1);
+    project.projectID[sizeof(project.projectID) - 1] = '\0';
     free(id);
 
-    // TODO: save_Project_to_json(project);
+    strncpy(project.ownerID, ownerID, sizeof(project.ownerID) - 1);
+    project.ownerID[sizeof(project.ownerID) - 1] = '\0';
+
+    for (int i = 0; i < currentMember; i++) {
+        strncpy(project.memberID[i], memberID[i], sizeof(project.memberID[i]) - 1);
+        project.memberID[i][sizeof(project.memberID[i]) - 1] = '\0';
+    }
+    project.currentMember = currentMember;
+
+    strncpy(project.description, description, sizeof(project.description) - 1);
+    project.description[sizeof(project.description) - 1] = '\0';
+
+    strncpy(project.startDate, startDate, sizeof(project.startDate) - 1);
+    project.startDate[sizeof(project.startDate) - 1] = '\0';
+
+    strncpy(project.endDate, endDate, sizeof(project.endDate) - 1);
+    project.endDate[sizeof(project.endDate) - 1] = '\0';
+
+    project.status = status;
+    project.tasks = tasks;
 
     return project;
 }
+
+
+
+//ham make_task co van de
+//duong dan den file json khong dung 146
+//ham get_next_project_id co van de
+
+
+//in id duoi dang string tat ca vao 1
