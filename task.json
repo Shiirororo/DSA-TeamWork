@@ -1,0 +1,15 @@
+{
+    "label": "build C",
+    "type": "shell",
+    "command": "gcc",
+    "args": [
+        "main.c",
+        "validation.c",
+        "-o",
+        "main.exe"
+    ],
+    "group": {
+        "kind": "build",
+        "isDefault": true
+    }
+}
