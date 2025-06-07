@@ -1,0 +1,27 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Run C++ in CMD",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${fileDirname}\\${fileBasenameNoExtension}.exe",
+        "args": [],
+        "stopAtEntry": false,
+        "cwd": "${fileDirname}",
+        "environment": [],
+        "externalConsole": true,  // 👈 Cái này sẽ mở cửa sổ CMD bên ngoài
+        "MIMode": "gdb",
+        "miDebuggerPath": "gdb.exe", // hoặc gdb path trong MinGW
+        "setupCommands": [
+          {
+            "description": "Enable pretty-printing for gdb",
+            "text": "-enable-pretty-printing",
+            "ignoreFailures": true
+          }
+        ],
+        "preLaunchTask": "Build and Run in CMD" // 👈 Trùng với tên task trong tasks.json
+      }
+    ]
+  }
+  
