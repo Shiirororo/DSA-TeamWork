@@ -19,5 +19,11 @@
 			}, {
 				"id":	"0c0bec23-e911-4854-86f8-a40f55f5aaf4"
 			}],
-		"tasks":	[]
+		"tasks":	[{
+				"taskID":	"TSK000000004",
+				"title":	"Me mayel",
+				"description":	"",
+				"assigneeID":	"",
+				"status":	"Todo"
+			}]
 	}]
