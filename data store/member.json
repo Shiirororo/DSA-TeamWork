@@ -45,5 +45,19 @@
         "id": "bb04bfe5-c092-4c32-843c-007de1047ed1",
         "name": "Phạm Nam Phúc",
         "role": 0
+    },
+    {
+        "id": "USR-22adb597-68d7-421b-bf5b-24bc773eb655",
+        "name": "Donal trump",
+        "role": "Member",
+        "email": "trump@gmail.com",
+        "phone": "0123456789"
+    },
+    {
+        "id": "USR-52152d1b-a05f-4131-a7c0-96b42e1d1eb6",
+        "name": "Kỳ gay",
+        "role": "Member",
+        "email": "kygay123gmail.com",
+        "phone": "09872643854"
     }
 ]

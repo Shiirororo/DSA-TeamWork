@@ -1,82 +1,112 @@
-# File: middleware/module_project.py
 import ctypes
+import json
 import os
+from .log import log_setting
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DLL_PATH = os.path.join(BASE_DIR, "cCode", "lib", "createProject.dll")
+logger = log_setting(__name__)
 
-try:
-    c_lib = ctypes.CDLL(DLL_PATH)
-except OSError as e:
-    print(f"LỖI: Không thể tải file DLL tại đường dẫn: {DLL_PATH}")
-    raise e
+# --- Định nghĩa các đường dẫn tuyệt đối ---
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DLL_PATH = os.path.abspath(os.path.join(base_dir, 'cCode', 'lib', 'createProject.dll'))
+PROJECTS_FILE_PATH = os.path.join(base_dir, 'data store', 'project.json')
+IDS_FILE_PATH = os.path.join(base_dir, 'data store', 'latest_ids.json')
+
+c_lib = ctypes.CDLL(DLL_PATH)
 
 # --- Định nghĩa các hàm C ---
-c_create_project = c_lib.create_project
-c_create_project.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.POINTER(ctypes.c_char_p), ctypes.c_int]
-c_create_project.restype = None
+free_c_string = c_lib.free_c_string
+free_c_string.argtypes = [ctypes.c_void_p]
 
-c_delete_project = c_lib.delete_project_by_id
-c_delete_project.argtypes = [ctypes.c_char_p]
-c_delete_project.restype = None
+create_project_c = c_lib.create_project
+create_project_c.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
+create_project_c.restype = ctypes.c_int
 
-c_add_task = c_lib.add_task_to_project
-c_add_task.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
-c_add_task.restype = None
+delete_project_c = c_lib.delete_project_by_id
+delete_project_c.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+delete_project_c.restype = ctypes.c_int
 
-c_get_next_id = c_lib.get_next_id
-c_get_next_id.argtypes = [ctypes.c_char_p]
-c_get_next_id.restype = ctypes.c_char_p
+update_project_c = c_lib.update_project_by_id
+update_project_c.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
+update_project_c.restype = ctypes.c_int
 
-c_free_string = c_lib.free_c_string
-c_free_string.argtypes = [ctypes.c_char_p]
-c_free_string.restype = None
+add_task_c = c_lib.add_task_to_project
+add_task_c.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
+add_task_c.restype = ctypes.c_int
 
-c_update_task_status = c_lib.update_task_status
-c_update_task_status.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
-c_update_task_status.restype = None
+update_task_status_c = c_lib.update_task_status
+update_task_status_c.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
+update_task_status_c.restype = ctypes.c_int
+
+# =============================================================
+# ==================== HÀM MỚI ĐƯỢC THÊM ======================
+# =============================================================
+delete_task_c = c_lib.delete_task_from_project
+delete_task_c.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
+delete_task_c.restype = ctypes.c_int
+# =============================================================
 
 
-# --- Các hàm Python để Frontend gọi ---
+# --- Các hàm Python wrapper ---
 
-def get_next_id(id_type: str) -> str:
-    id_bytes = c_get_next_id(id_type.encode('utf-8'))
+def get_next_id(id_prefix: str, id_key: str) -> str:
+    """Hàm tạo ID mới, viết hoàn toàn bằng Python."""
     try:
-        py_string = id_bytes.decode('utf-8')
-    finally:
-        c_free_string(id_bytes)
-    return py_string
+        with open(IDS_FILE_PATH, 'r+') as f:
+            ids_data = json.load(f)
+            current_id = ids_data.get(id_key, 0)
+            next_id_val = current_id + 1
+            ids_data[id_key] = next_id_val
+            f.seek(0)
+            json.dump(ids_data, f, indent=4)
+            f.truncate()
+            return f"{id_prefix}{next_id_val:09d}"
+    except (FileNotFoundError, json.JSONDecodeError):
+        with open(IDS_FILE_PATH, 'w') as f:
+            ids_data = { "project": 0, "task": 0 }
+            ids_data[id_key] = 1
+            json.dump(ids_data, f, indent=4)
+            return f"{id_prefix}{1:09d}"
+    except Exception as e:
+        logger.error(f"Lỗi không xác định trong get_next_id: {e}")
+        return ""
 
-def create_project(name, description, ownerID, startDate, endDate, status, memberID):
-    c_name = name.encode('utf-8')
-    c_description = description.encode('utf-8')
-    c_ownerID = ownerID.encode('utf-8')
-    c_startDate = startDate.encode('utf-8')
-    c_endDate = endDate.encode('utf-8')
-    currentMember = len(memberID)
-    c_memberID_array = (ctypes.c_char_p * currentMember)()
-    c_memberID_array[:] = [m.encode('utf-8') for m in memberID]
-    c_create_project(c_name, c_description, c_ownerID, c_startDate, c_endDate, status, c_memberID_array, currentMember)
-    print(f"Middleware: Đã gọi C để tạo dự án '{name}'")
+def get_all_projects():
+    """Đọc trực tiếp từ Python để lấy danh sách dự án."""
+    try:
+        if not os.path.exists(PROJECTS_FILE_PATH): return []
+        with open(PROJECTS_FILE_PATH, "r", encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Lỗi khi đọc project.json: {e}")
+        return []
 
-def delete_project(project_id: str):
-    c_project_id = project_id.encode('utf-8')
-    c_delete_project(c_project_id)
-    print(f"Middleware: Đã gọi C để xóa dự án '{project_id}'")
+def create_project(name, description, owner_id):
+    """Tạo ID bằng Python, sau đó gọi C để ghi vào file."""
+    project_id = get_next_id("PRJ", "project")
+    if not project_id: return False
+    result = create_project_c(PROJECTS_FILE_PATH.encode('utf-8'), project_id.encode('utf-8'), name.encode('utf-8'), description.encode('utf-8'), owner_id.encode('utf-8'))
+    return result == 1
 
-def add_task(project_id: str, title: str, description: str, assignee_id: str):
-    c_project_id = project_id.encode('utf-8')
-    c_title = title.encode('utf-8')
-    c_description = description.encode('utf-8')
-    c_assignee_id = assignee_id.encode('utf-8') if assignee_id else None
-    c_add_task(c_project_id, c_title, c_description, c_assignee_id)
-    print(f"Middleware: Đã gọi C để thêm task '{title}' vào dự án '{project_id}'")
+def delete_project(project_id):
+    return delete_project_c(PROJECTS_FILE_PATH.encode('utf-8'), project_id.encode('utf-8')) == 1
 
-def update_task_status(project_id: str, task_id: str, new_status: str):
-    """Hàm Python gọi hàm C để cập nhật trạng thái task."""
-    c_project_id = project_id.encode('utf-8')
-    c_task_id = task_id.encode('utf-8')
-    c_new_status = new_status.encode('utf-8')
-    
-    c_update_task_status(c_project_id, c_task_id, c_new_status)
-    print(f"Middleware: Đã gọi C để cập nhật task '{task_id}' thành trạng thái '{new_status}'")
+def update_project(project_id, new_name, new_description):
+    return update_project_c(PROJECTS_FILE_PATH.encode('utf-8'), project_id.encode('utf-8'), new_name.encode('utf-8'), new_description.encode('utf-8')) == 1
+
+def add_task(project_id, title, description):
+    """Tạo ID bằng Python, sau đó gọi C để ghi vào file."""
+    task_id = get_next_id("TSK", "task")
+    if not task_id: return False
+    result = add_task_c(PROJECTS_FILE_PATH.encode('utf-8'), project_id.encode('utf-8'), task_id.encode('utf-8'), title.encode('utf-8'), description.encode('utf-8'))
+    return result == 1
+
+def update_task_status(project_id, task_id, new_status):
+    return update_task_status_c(PROJECTS_FILE_PATH.encode('utf-8'), project_id.encode('utf-8'), task_id.encode('utf-8'), new_status.encode('utf-8')) == 1
+
+# =============================================================
+# ==================== HÀM MỚI ĐƯỢC THÊM ======================
+# =============================================================
+def delete_task(project_id, task_id):
+    """Gọi C để xóa một task cụ thể khỏi dự án."""
+    return delete_task_c(PROJECTS_FILE_PATH.encode('utf-8'), project_id.encode('utf-8'), task_id.encode('utf-8')) == 1
+# =============================================================

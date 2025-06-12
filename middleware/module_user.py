@@ -1,65 +1,93 @@
-# File: middleware/module_user.py
 import json
-import os
 import uuid
-# from middleware.module_project import get_next_id
-from middleware.log import log_setting  # Import hàm log
+import os
+from .log import log_setting
 
-# Tạo một logger riêng cho module này
 logger = log_setting(__name__)
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MEMBER_FILE = os.path.join(base_dir, 'data store', 'member.json')
+PASSWORD_FILE = os.path.join(base_dir, 'data store', 'password.json')
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PASSWORD_FILE = os.path.join(BASE_DIR, "data store", "password.json")
-MEMBER_FILE = os.path.join(BASE_DIR, "data store", "member.json")
-
-def load_json(filepath):
-    if not os.path.exists(filepath):
+def _read_json_file(file_path):
+    """Hàm nội bộ để đọc file JSON một cách an toàn."""
+    try:
+        if not os.path.exists(file_path): return []
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except:
         return []
-    with open(filepath, 'r', encoding='utf-8') as f:
-        return json.load(f)
 
-def save_json(filepath, data):
-    os.makedirs(os.path.dirname(filepath), exist_ok=True)
-    with open(filepath, 'w', encoding='utf-8') as f:
+def _write_json_file(file_path, data):
+    """Hàm nội bộ để ghi file JSON."""
+    with open(file_path, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
-def register_user(username, password, full_name):
-    """Hàm xử lý logic đăng ký người dùng mới với logging chi tiết."""
-    logger.debug(f"Bắt đầu quy trình đăng ký cho username: '{username}'")
+def check_credentials(username, password):
+    """
+    Kiểm tra thông tin đăng nhập từ file password.json và lấy thông tin chi tiết
+    từ member.json. Trả về (True, user_info_dict) hoặc (False, None).
+    """
+    logger.debug(f"Đang kiểm tra đăng nhập cho user: {username}")
+    passwords = _read_json_file(PASSWORD_FILE)
+    members = _read_json_file(MEMBER_FILE)
+    
+    user_id = next((user.get('id') for user in passwords if user.get('username') == username and user.get('password') == password), None)
+            
+    if user_id:
+        user_info = next((member for member in members if member.get('id') == user_id), None)
+        if user_info:
+            logger.info(f"Đăng nhập thành công cho user: {username}")
+            return True, user_info
+    
+    logger.warning(f"Đăng nhập thất bại cho user: {username}")
+    return False, None
 
-    # 1. Kiểm tra username đã tồn tại chưa
-    passwords_data = load_json(PASSWORD_FILE)
-    for user in passwords_data:
-        if user.get('username') == username:
-            logger.warning(f"Thất bại: Tên người dùng '{username}' đã tồn tại.")
-            return (False, f"Tên người dùng '{username}' đã tồn tại.")
+def register_user(username, password, name, email, phone):
+    """Đăng ký người dùng mới."""
+    passwords = _read_json_file(PASSWORD_FILE)
+    if any(user.get('username') == username for user in passwords):
+        return False, "Tên đăng nhập đã tồn tại"
+    
+    new_user_id = "USR-" + str(uuid.uuid4())
+    new_password_entry = {"username": username, "password": password, "id": new_user_id}
+    passwords.append(new_password_entry)
+    _write_json_file(PASSWORD_FILE, passwords)
+    
+    members = _read_json_file(MEMBER_FILE)
+    new_member_entry = {"id": new_user_id, "name": name, "role": "Member", "email": email, "phone": phone}
+    members.append(new_member_entry)
+    _write_json_file(MEMBER_FILE, members)
+    
+    return True, "Đăng ký thành công"
 
-    # 2. Sinh ID người dùng mới bằng Python (UUID4) thay vì gọi C để tránh crash
-    new_user_id = str(uuid.uuid4())
-    logger.info(f"Sinh ID người dùng mới bằng Python: {new_user_id}")
+def get_all_users():
+    """Lấy tất cả người dùng."""
+    return _read_json_file(MEMBER_FILE)
 
-    # 3. Tạo thông tin người dùng mới
-    new_password_entry = { "id": new_user_id, "username": username, "password": password }
-    new_member_entry = { "id": new_user_id, "name": full_name, "role": 0 }
+def update_user_role(user_id, new_role):
+    """Cập nhật vai trò người dùng."""
+    members = _read_json_file(MEMBER_FILE)
+    user_found = False
+    for user in members:
+        if user.get('id') == user_id:
+            user['role'] = new_role
+            user_found = True
+            break
+    if user_found:
+        _write_json_file(MEMBER_FILE, members)
+        return True
+    return False
 
-    # 4. Thêm vào dữ liệu và lưu lại file
-    try:
-        logger.debug("Chuẩn bị ghi vào file password.json...")
-        passwords_data.append(new_password_entry)
-        save_json(PASSWORD_FILE, passwords_data)
-        logger.debug("Ghi password.json thành công.")
-
-        logger.debug("Chuẩn bị ghi vào file member.json...")
-        members_data = load_json(MEMBER_FILE)
-        members_data.append(new_member_entry)
-        save_json(MEMBER_FILE, members_data)
-        logger.debug("Ghi member.json thành công.")
-    except IOError as e:
-        logger.error(f"Lỗi I/O khi ghi file JSON: {e}", exc_info=True)
-        return (False, "Lỗi khi lưu dữ liệu người dùng.")
-    except Exception as e:
-        logger.error(f"Lỗi không xác định khi ghi file: {e}", exc_info=True)
-        return (False, "Lỗi không xác định khi lưu dữ liệu.")
-
-    logger.info(f"Hoàn tất đăng ký cho user ID: {new_user_id}")
-    return (True, "Tạo tài khoản thành công!")
+def delete_user(user_id):
+    """Xóa người dùng khỏi cả 2 file member và password."""
+    members = _read_json_file(MEMBER_FILE)
+    passwords = _read_json_file(PASSWORD_FILE)
+    
+    new_members = [user for user in members if user.get('id') != user_id]
+    
+    if len(new_members) < len(members):
+        new_passwords = [p for p in passwords if p.get('id') != user_id]
+        _write_json_file(MEMBER_FILE, new_members)
+        _write_json_file(PASSWORD_FILE, new_passwords)
+        return True
+    return False

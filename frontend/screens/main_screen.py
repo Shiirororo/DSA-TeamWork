@@ -1,215 +1,149 @@
-# File: frontend/screens/main_screen.py
-
 import customtkinter as ctk
-import json
-from datetime import datetime
-from middleware import module_project
-from frontend.CTkMessagebox import CTkMessagebox
+from CTkMessagebox import CTkMessagebox
+from middleware.module_project import get_all_projects, create_project, delete_project, update_project
 
 class MainScreen(ctk.CTkFrame):
-    def __init__(self, master, user_info, logger):
+    def __init__(self, master, app, user_info, **kwargs):
         super().__init__(master)
-        self.app = master # Lưu lại tham chiếu đến app chính (master) để điều hướng
+        self.app = app
+        self.logger = app.logger
         self.user_info = user_info
-        self.logger = logger
         self.pack(fill="both", expand=True)
-        self.logger.info(f"Người dùng {self.user_info.get('name')} đã vào màn hình chính.")
+        self.create_widgets()
+        self.refresh_projects()
 
-        # Main layout
-        self.grid_rowconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=1)
-
-        # Sidebar
+    def create_widgets(self):
+        # --- Sidebar ---
         self.sidebar_frame = ctk.CTkFrame(self, width=200, corner_radius=0)
-        self.sidebar_frame.grid(row=0, column=0, sticky="nswe")
-        self.sidebar_frame.grid_rowconfigure(5, weight=1)
-
-        self.logo_label = ctk.CTkLabel(self.sidebar_frame, text="Project Manager", font=ctk.CTkFont(size=20, weight="bold"))
-        self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 10))
+        self.sidebar_frame.pack(side="left", fill="y")
+        self.sidebar_frame.grid_rowconfigure(4, weight=1)
+        ctk.CTkLabel(self.sidebar_frame, text=f"Xin chào,\n{self.user_info.get('name')}", font=ctk.CTkFont(size=18, weight="bold")).grid(row=0, column=0, padx=20, pady=(20, 10))
+        ctk.CTkButton(self.sidebar_frame, text="Tạo dự án mới", command=self.open_add_project_form).grid(row=1, column=0, padx=20, pady=10)
+        ctk.CTkButton(self.sidebar_frame, text="Thông tin cá nhân", state="disabled").grid(row=2, column=0, padx=20, pady=10)
+        ctk.CTkButton(self.sidebar_frame, text="Đăng xuất", fg_color="transparent", border_width=2, text_color=("gray10", "#DCE4EE"), command=self.app.logout).grid(row=5, column=0, padx=20, pady=20, sticky="s")
         
-        # Sidebar buttons
-        self.sidebar_button_1 = ctk.CTkButton(self.sidebar_frame, text="Danh sách dự án", command=self.show_projects_list)
-        self.sidebar_button_1.grid(row=1, column=0, padx=20, pady=10)
+        # --- Main Content ---
+        self.main_content_frame = ctk.CTkScrollableFrame(self)
+        self.main_content_frame.pack(side="right", fill="both", expand=True, padx=20, pady=20)
+        self.project_list_frame = ctk.CTkFrame(self.main_content_frame, fg_color="transparent")
+        self.project_list_frame.pack(fill="both", expand=True)
+
+    def refresh_projects(self):
+        """Làm mới danh sách dự án cho Member."""
+        for widget in self.project_list_frame.winfo_children(): widget.destroy()
+        all_projects = get_all_projects()
+        member_projects = []
+        for p in all_projects:
+            # Sửa lại logic để duyệt qua danh sách object member
+            member_ids = [member.get('id') for member in p.get('members', [])]
+            if self.user_info.get('id') in member_ids:
+                member_projects.append(p)
+        self.display_projects(member_projects, "Bạn chưa tham gia vào dự án nào.")
+
+    def display_projects(self, project_list, no_project_message):
+        """Hàm chung để hiển thị danh sách các dự án."""
+        if not project_list:
+            ctk.CTkLabel(self.project_list_frame, text=no_project_message, font=("Arial", 16)).pack(pady=20)
+            return
+        for project_data in project_list:
+            card = self.create_project_card(self.project_list_frame, project_data)
+            card.pack(fill="x", pady=5, padx=5)
+
+    def create_project_card(self, master, project_data):
+        """Tạo một card dự án với đầy đủ thông tin và nút bấm."""
+        card = ctk.CTkFrame(master, border_width=1, corner_radius=8)
         
-        self.sidebar_button_3 = ctk.CTkButton(self.sidebar_frame, text="Thống kê")
-        self.sidebar_button_3.grid(row=2, column=0, padx=20, pady=10)
-
-        self.sidebar_button_4 = ctk.CTkButton(self.sidebar_frame, text="Tạo project", command=self.open_create_project_form)
-        self.sidebar_button_4.grid(row=3, column=0, padx=20, pady=10)
-
-        self.appearance_mode_label = ctk.CTkLabel(self.sidebar_frame, text="Appearance Mode:", anchor="w")
-        self.appearance_mode_label.grid(row=6, column=0, padx=20, pady=(10, 0))
-        self.appearance_mode_optionemenu = ctk.CTkOptionMenu(self.sidebar_frame, values=["Light", "Dark", "System"],
-                                                                       command=self.change_appearance_mode_event)
-        self.appearance_mode_optionemenu.grid(row=7, column=0, padx=20, pady=(10, 20))
-
-
-        # Main content area
-        self.main_content_frame = ctk.CTkFrame(self)
-        self.main_content_frame.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
+        ctk.CTkLabel(card, text=project_data.get("name", "N/A"), font=ctk.CTkFont(size=16, weight="bold"), anchor="w").pack(fill="x", padx=10, pady=(10,5))
+        ctk.CTkLabel(card, text=project_data.get("description", ""), wraplength=700, justify="left", anchor="w").pack(fill="x", padx=10, pady=(0, 10))
         
-        self.display_area = ctk.CTkScrollableFrame(self.main_content_frame)
-        self.display_area.pack(expand=True, fill="both")
+        button_frame = ctk.CTkFrame(card, fg_color="transparent")
+        button_frame.pack(fill="x", padx=10, pady=(5, 10))
+        
+        # Sử dụng đúng key 'projectID' và 'ownerID' từ JSON
+        ctk.CTkButton(button_frame, text="Xem", width=60, command=lambda p=project_data: self.app.show_project_detail_screen(p.get('projectID'))).pack(side="left")
+        
+        if self.user_info.get('id') == project_data.get('ownerID') or self.user_info.get('role') == "Admin":
+            ctk.CTkButton(button_frame, text="Sửa", width=60, command=lambda p=project_data: self.open_edit_project_form(p)).pack(side="left", padx=5)
+            ctk.CTkButton(button_frame, text="Xóa", width=60, fg_color="#D83E3E", hover_color="#B22222", command=lambda pid=project_data.get("projectID"): self.confirm_delete_project(pid)).pack(side="left", padx=5)
+            
+        return card
 
-        self.show_projects_list()
-    
-    def change_appearance_mode_event(self, new_appearance_mode: str):
-        ctk.set_appearance_mode(new_appearance_mode)
+    def open_add_project_form(self):
+        """Mở dialog để thêm dự án mới."""
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Tạo dự án mới"); dialog.geometry("400x300"); dialog.transient(self.app); dialog.grab_set()
+        
+        ctk.CTkLabel(dialog, text="Tên dự án:").pack(pady=(10, 0), padx=20, anchor="w")
+        name_entry = ctk.CTkEntry(dialog, width=360); name_entry.pack(pady=5, padx=20)
+        ctk.CTkLabel(dialog, text="Mô tả:").pack(pady=(10, 0), padx=20, anchor="w")
+        desc_textbox = ctk.CTkTextbox(dialog, width=360, height=100); desc_textbox.pack(pady=5, padx=20)
 
-    def show_projects_list(self):
-        for widget in self.display_area.winfo_children():
-            widget.destroy()
-        try:
-            with open("data store/project.json", "r", encoding='utf-8') as f:
-                projects = json.load(f)
-            user_id = self.user_info.get("id")
-            user_projects_found = False
-            for project in projects:
-                member_ids = [member['id'] for member in project.get("members", [])]
-                if user_id in member_ids:
-                    user_projects_found = True
-                    project_card = ctk.CTkFrame(self.display_area, border_width=1, border_color="gray")
-                    project_card.pack(fill="x", padx=10, pady=10)
-                    info_frame = ctk.CTkFrame(project_card, fg_color="transparent")
-                    info_frame.pack(fill="x", padx=10, pady=10)
-                    info_frame.grid_columnconfigure(0, weight=1)
-                    name_label = ctk.CTkLabel(info_frame, text=project.get("name", "Không có tên"), font=ctk.CTkFont(size=16, weight="bold"))
-                    name_label.grid(row=0, column=0, sticky="w")
-                    desc_label = ctk.CTkLabel(info_frame, text=project.get("description", ""), wraplength=500, justify="left")
-                    desc_label.grid(row=1, column=0, sticky="w", pady=(5, 10))
-                    id_label = ctk.CTkLabel(info_frame, text=f"ID: {project.get('projectID', '')} | Trạng thái: {project.get('status', '')}", font=ctk.CTkFont(size=10))
-                    id_label.grid(row=2, column=0, sticky="w")
-                    button_frame = ctk.CTkFrame(project_card, fg_color="transparent")
-                    button_frame.pack(fill="x", padx=10, pady=(0, 10))
-                    project_id = project.get("projectID")
-                    delete_button = ctk.CTkButton(button_frame, text="Xóa", width=80, fg_color="red", hover_color="#C40000", command=lambda p_id=project_id: self.delete_project(p_id))
-                    delete_button.pack(side="right", padx=(10, 0))
-                    edit_button = ctk.CTkButton(button_frame, text="Sửa", width=80, command=lambda p_id=project_id: self.edit_project(p_id))
-                    edit_button.pack(side="right", padx=(10, 0))
-                    details_button = ctk.CTkButton(button_frame, text="Xem chi tiết", width=120, command=lambda p_id=project_id: self.view_project_details(p_id))
-                    details_button.pack(side="right")
-            if not user_projects_found:
-                ctk.CTkLabel(self.display_area, text="Bạn chưa tham gia vào dự án nào.").pack(pady=20)
-        except (FileNotFoundError, json.JSONDecodeError):
-            ctk.CTkLabel(self.display_area, text="Chưa có dự án nào hoặc file dự án bị lỗi.").pack(pady=20)
+        def submit():
+            name, desc = name_entry.get(), desc_textbox.get("1.0", "end-1c")
+            if not name:
+                CTkMessagebox(master=dialog, title="Lỗi", message="Tên dự án không được để trống!", icon="cancel")
+                return
 
-    def open_create_project_form(self):
-        form_window = ctk.CTkToplevel(self)
-        form_window.title("Tạo Dự Án Mới")
-        form_window.geometry("500x600")
-        form_window.transient(self.winfo_toplevel())
-        form_window.grab_set()
-        name_label = ctk.CTkLabel(form_window, text="Tên dự án:")
-        name_label.pack(padx=20, pady=(20, 5), anchor="w")
-        name_entry = ctk.CTkEntry(form_window, width=460)
-        name_entry.pack(padx=20, pady=5, fill="x")
-        desc_label = ctk.CTkLabel(form_window, text="Mô tả:")
-        desc_label.pack(padx=20, pady=5, anchor="w")
-        desc_textbox = ctk.CTkTextbox(form_window, height=100)
-        desc_textbox.pack(padx=20, pady=5, fill="both", expand=True)
-        members_label = ctk.CTkLabel(form_window, text="Thêm thành viên:")
-        members_label.pack(padx=20, pady=5, anchor="w")
-        try:
-            with open("data store/member.json", "r", encoding="utf-8") as f:
-                all_members = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError): all_members = []
-        scrollable_frame = ctk.CTkScrollableFrame(form_window, height=150)
-        scrollable_frame.pack(padx=20, pady=5, fill="x")
-        member_vars = {}
-        for member in all_members:
-            member_id = member.get("id")
-            member_name = member.get("name")
-            if member_id and member_name:
-                var = ctk.StringVar(value="off")
-                is_owner = (member_id == self.user_info.get("id"))
-                checkbox = ctk.CTkCheckBox(scrollable_frame, text=f"{member_name} ({member_id})", variable=var, onvalue=member_id, offvalue="off")
-                if is_owner:
-                    checkbox.select()
-                    checkbox.configure(state="disabled")
-                checkbox.pack(anchor="w", padx=10)
-                member_vars[member_id] = var
-        def submit_project():
-            project_name = name_entry.get()
-            project_desc = desc_textbox.get("1.0", "end-1c")
-            selected_members = [var.get() for var in member_vars.values() if var.get() != "off"]
-            if not project_name:
-                CTkMessagebox(title="Lỗi", message="Tên dự án không được để trống!", icon="cancel"); return
-            if not selected_members:
-                CTkMessagebox(title="Lỗi", message="Phải có ít nhất một thành viên!", icon="cancel"); return
-            try:
-                module_project.create_project(name=project_name, description=project_desc, ownerID=self.user_info.get("id"), startDate=datetime.now().strftime("%Y-%m-%d"), endDate="", status=0, memberID=selected_members)
-                CTkMessagebox(title="Thành công", message=f"Đã tạo dự án '{project_name}' thành công!")
-                form_window.destroy()
-                self.show_projects_list()
-            except Exception as e:
-                self.logger.error(f"Lỗi khi tạo dự án: {e}")
-                CTkMessagebox(title="Lỗi", message=f"Đã xảy ra lỗi khi tạo dự án:\n{e}", icon="cancel")
-        button_frame = ctk.CTkFrame(form_window, fg_color="transparent")
-        button_frame.pack(padx=20, pady=20, fill="x")
-        cancel_button = ctk.CTkButton(button_frame, text="Hủy", command=form_window.destroy)
-        cancel_button.pack(side="right")
-        save_button = ctk.CTkButton(button_frame, text="Lưu Dự Án", command=submit_project)
-        save_button.pack(side="right", padx=10)
+            # =============================================================
+            # ==================== LOGIC ĐƯỢC CẬP NHẬT =====================
+            # =============================================================
+            # Hàm create_project giờ sẽ trả về project_id hoặc None
+            new_project_id = create_project(name, desc, self.user_info.get('id'))
+            if new_project_id:
+                CTkMessagebox(master=dialog, title="Thành công", message="Tạo dự án thành công!")
+                dialog.destroy()
+                self.refresh_projects() # Làm mới danh sách để thấy dự án mới
+            else:
+                CTkMessagebox(master=dialog, title="Lỗi", message="Có lỗi xảy ra khi tạo dự án!", icon="cancel")
+            # =============================================================
+        
+        ctk.CTkButton(dialog, text="Tạo dự án", command=submit).pack(pady=20)
 
-    def view_project_details(self, project_id):
-        self.logger.info(f"Yêu cầu xem chi tiết dự án: {project_id}")
-        self.app.show_project_detail_screen(self.user_info, project_id)
-
-    def edit_project(self, project_id):
-        self.logger.info(f"Yêu cầu sửa dự án: {project_id}")
-        CTkMessagebox(title="Thông báo", message=f"Tính năng 'Sửa' cho dự án {project_id} sẽ được phát triển!")
-
-    def delete_project(self, project_id):
-        self.logger.info(f"Yêu cầu xóa dự án: {project_id}")
-        msg = CTkMessagebox(title="Xác nhận xóa", message=f"Bạn có chắc chắn muốn xóa dự án {project_id} không? Hành động này không thể hoàn tác.", icon="question", option_1="Hủy", option_2="Xóa")
+    def confirm_delete_project(self, project_id):
+        """Hỏi xác nhận trước khi xóa dự án."""
+        if not project_id: return
+        msg = CTkMessagebox(title="Xác nhận", message="Bạn có chắc chắn muốn xóa dự án này?", icon="warning", option_1="Hủy", option_2="Xóa")
         if msg.get() == "Xóa":
-            try:
-                module_project.delete_project(project_id)
-                self.logger.warning(f"Người dùng đã xóa thành công dự án {project_id}")
-                self.show_projects_list()
-            except Exception as e:
-                self.logger.error(f"Lỗi khi xóa dự án {project_id}: {e}")
-                CTkMessagebox(title="Lỗi", message=f"Đã xảy ra lỗi khi xóa dự án:\n{e}", icon="cancel")
+            if delete_project(project_id):
+                CTkMessagebox(title="Thành công", message="Đã xóa dự án.")
+                self.refresh_projects()
+            else:
+                CTkMessagebox(title="Lỗi", message="Xóa dự án thất bại.", icon="cancel")
+
+    def open_edit_project_form(self, project_data):
+        """Mở dialog để sửa thông tin dự án."""
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Chỉnh sửa Dự án"); dialog.geometry("400x300"); dialog.transient(self.app); dialog.grab_set()
+        
+        ctk.CTkLabel(dialog, text="Tên dự án:").pack(pady=(10, 0), padx=20, anchor="w")
+        name_entry = ctk.CTkEntry(dialog, width=360); name_entry.insert(0, project_data.get("name")); name_entry.pack(pady=5, padx=20)
+        
+        ctk.CTkLabel(dialog, text="Mô tả:").pack(pady=(10, 0), padx=20, anchor="w")
+        desc_textbox = ctk.CTkTextbox(dialog, width=360, height=100); desc_textbox.insert("1.0", project_data.get("description")); desc_textbox.pack(pady=5, padx=20)
+
+        def save():
+            new_name, new_desc = name_entry.get(), desc_textbox.get("1.0", "end-1c")
+            if new_name and update_project(project_data.get("projectID"), new_name, new_desc):
+                CTkMessagebox(title="Thành công", message="Cập nhật thành công!", master=dialog)
+                dialog.destroy()
+                self.refresh_projects()
+            else:
+                CTkMessagebox(title="Lỗi", message="Tên không được trống hoặc có lỗi xảy ra.", icon="cancel", master=dialog)
+        
+        ctk.CTkButton(dialog, text="Lưu thay đổi", command=save).pack(pady=20)
 
 class AdminScreen(MainScreen):
-    def __init__(self, master, user_info, logger):
-        super().__init__(master, user_info, logger)
-        self.logger.info(f"Admin {self.user_info.get('name')} đã vào màn hình chính.")
-        self.logo_label.configure(text="Project Manager (Admin)")
-        self.admin_button = ctk.CTkButton(self.sidebar_frame, text="Quản lý người dùng")
-        self.admin_button.grid(row=4, column=0, padx=20, pady=10)
+    """Màn hình dành cho Admin, kế thừa từ MainScreen và có thêm chức năng."""
+    def create_widgets(self):
+        super().create_widgets()
+        ctk.CTkButton(self.sidebar_frame, text="Quản lý người dùng", command=self.open_user_management).grid(row=3, column=0, padx=20, pady=10)
 
-    def show_projects_list(self):
-        for widget in self.display_area.winfo_children():
-            widget.destroy()
-        try:
-            with open("data store/project.json", "r", encoding='utf-8') as f:
-                projects = json.load(f)
-            if not projects:
-                ctk.CTkLabel(self.display_area, text="Chưa có dự án nào trong hệ thống.").pack(pady=20)
-                return
-            for project in projects:
-                project_card = ctk.CTkFrame(self.display_area, border_width=1, border_color="gray")
-                project_card.pack(fill="x", padx=10, pady=10)
-                info_frame = ctk.CTkFrame(project_card, fg_color="transparent")
-                info_frame.pack(fill="x", padx=10, pady=10)
-                info_frame.grid_columnconfigure(0, weight=1)
-                name_label = ctk.CTkLabel(info_frame, text=project.get("name", "Không có tên"), font=ctk.CTkFont(size=16, weight="bold"))
-                name_label.grid(row=0, column=0, sticky="w")
-                owner_label = ctk.CTkLabel(info_frame, text=f"Chủ sở hữu: {project.get('ownerID', 'N/A')}", font=ctk.CTkFont(size=11, slant="italic"))
-                owner_label.grid(row=1, column=0, sticky="w")
-                desc_label = ctk.CTkLabel(info_frame, text=project.get("description", ""), wraplength=500, justify="left")
-                desc_label.grid(row=2, column=0, sticky="w", pady=(5, 10))
-                id_label = ctk.CTkLabel(info_frame, text=f"ID: {project.get('projectID', '')} | Trạng thái: {project.get('status', '')}", font=ctk.CTkFont(size=10))
-                id_label.grid(row=3, column=0, sticky="w")
-                button_frame = ctk.CTkFrame(project_card, fg_color="transparent")
-                button_frame.pack(fill="x", padx=10, pady=(0, 10))
-                project_id = project.get("projectID")
-                delete_button = ctk.CTkButton(button_frame, text="Xóa", width=80, fg_color="red", hover_color="#C40000", command=lambda p_id=project_id: self.delete_project(p_id))
-                delete_button.pack(side="right", padx=(10, 0))
-                edit_button = ctk.CTkButton(button_frame, text="Sửa", width=80, command=lambda p_id=project_id: self.edit_project(p_id))
-                edit_button.pack(side="right", padx=(10, 0))
-                details_button = ctk.CTkButton(button_frame, text="Xem chi tiết", width=120, command=lambda p_id=project_id: self.view_project_details(p_id))
-                details_button.pack(side="right")
-        except (FileNotFoundError, json.JSONDecodeError):
-            ctk.CTkLabel(self.display_area, text="Chưa có dự án nào hoặc file dự án bị lỗi.").pack(pady=20)
+    def refresh_projects(self):
+        """Admin thấy tất cả các dự án."""
+        for widget in self.project_list_frame.winfo_children(): widget.destroy()
+        all_projects = get_all_projects()
+        self.display_projects(all_projects, "Chưa có dự án nào trong hệ thống.")
+    
+    def open_user_management(self):
+        """Chuyển đến màn hình quản lý người dùng."""
+        self.app.show_user_management_screen()

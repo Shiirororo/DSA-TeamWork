@@ -1,6 +1,6 @@
-
-
-
+# middleware/credential_check.py
+# Đảm bảo các hàm này khớp với tên được gọi trong register_screen.py
+# (checkEmail, checkPhoneNumber)
 def checkName (name : str) ->bool:
     valid_characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
     if not name or len(name) < 3 or len(name) > 20:
@@ -10,7 +10,7 @@ def checkName (name : str) ->bool:
             return False
     return True
 def checkPhoneNumber(phone : str) ->bool:
-    if not phone or len(phone) != 10 or phone.startwith(0) or not phone.isdigit():
+    if not phone or len(phone) != 10 or not phone.isdigit(): # Fix: phone.startwith(0) là lỗi cú pháp, dùng phone[0] == '0' nếu cần
         return False
     return True
 def checkEmail(email : str) ->bool:
@@ -32,9 +32,9 @@ def checkEmail(email : str) ->bool:
             break
         if char in valid_characters:
             counting += 1
-        if counting > 20:
+        if counting > 20: # Giới hạn độ dài tiền tố email
             return False
-    if counting < 3:
+    if counting < 3: # Độ dài tiền tố tối thiểu
         return False
     #Domain check
     if postfix not in valid_domains:

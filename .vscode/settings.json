@@ -4,5 +4,6 @@
         "*.h": "c",
         ".c": "c"
         
-    }
+    },
+    "cmake.sourceDirectory": "D:/Code/DSA-TeamWork/external/cJSON"
 }

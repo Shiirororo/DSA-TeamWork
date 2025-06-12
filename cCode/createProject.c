@@ -1,185 +1,193 @@
-// File: cCode/createProject.c
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "implement.h"
-#include "../external/cJSON/cJSON.h"
+#include "cJSON.h"
+#include "struct.h"
 
-#define JSON_PROJECT_FILE "data store/project.json"
-#define JSON_IDS_FILE "data store/latest_ids.json"
-
-cJSON* load_json_from_file(const char* filepath) {
-    FILE* file = fopen(filepath, "r");
-    if (file == NULL) return NULL;
+// --- HÀM NỘI BỘ ---
+cJSON* read_json_from_file(const char* filepath) {
+    FILE *file = fopen(filepath, "r");
+    if (!file) return NULL;
     fseek(file, 0, SEEK_END);
     long length = ftell(file);
     fseek(file, 0, SEEK_SET);
-    if (length == 0) {
-        fclose(file);
-        return cJSON_CreateObject();
-    }
-    char* buffer = (char*)malloc(length + 1);
-    if (buffer == NULL) {
-        fclose(file);
-        return NULL;
-    }
-    fread(buffer, 1, length, file);
+    char *data = (char *)malloc(length + 1);
+    if (!data) { fclose(file); return NULL; }
+    fread(data, 1, length, file);
+    data[length] = '\0';
     fclose(file);
-    buffer[length] = '\0';
-    cJSON* json = cJSON_Parse(buffer);
-    free(buffer);
+    cJSON *json = cJSON_Parse(data);
+    free(data);
     return json;
 }
 
 void write_json_to_file(const char* filepath, cJSON* json) {
-    char* json_str = cJSON_Print(json);
-    if (json_str != NULL) {
-        FILE* file = fopen(filepath, "w");
-        if (file != NULL) {
-            fprintf(file, "%s\n", json_str);
-            fclose(file);
+    FILE *file = fopen(filepath, "w");
+    if (file) {
+        char *out = cJSON_Print(json);
+        if (out) {
+            fprintf(file, "%s", out);
+            free(out);
         }
-        free(json_str);
+        fclose(file);
     }
 }
 
-cJSON* load_all_projects_as_json_array(const char* filepath) {
-    cJSON* projects_json = load_json_from_file(filepath);
-    if (projects_json == NULL || !cJSON_IsArray(projects_json)) {
-        if (projects_json) cJSON_Delete(projects_json);
-        return cJSON_CreateArray();
-    }
-    return projects_json;
+// --- CÁC HÀM EXPORT ---
+__declspec(dllexport) void free_c_string(void* ptr) {
+    if(ptr) free(ptr);
 }
 
-EXPORT char* get_next_id(const char* type) {
-    cJSON* ids_json = load_json_from_file(JSON_IDS_FILE);
-    if (ids_json == NULL) { ids_json = cJSON_CreateObject(); }
-    cJSON* id_item = cJSON_GetObjectItemCaseSensitive(ids_json, type);
-    if (!cJSON_IsNumber(id_item)) {
-        cJSON_AddNumberToObject(ids_json, type, 0);
-        id_item = cJSON_GetObjectItemCaseSensitive(ids_json, type);
-    }
-    int current_id = id_item->valueint;
-    current_id++;
-    cJSON_SetNumberValue(id_item, current_id);
-    write_json_to_file(JSON_IDS_FILE, ids_json);
-    cJSON_Delete(ids_json);
-    char* next_id_str = malloc(sizeof(char) * 15);
-    if (next_id_str == NULL) return NULL;
-    if (strcmp(type, "project") == 0) { sprintf(next_id_str, "PRJ%09d", current_id); }
-    else if (strcmp(type, "task") == 0) { sprintf(next_id_str, "TSK%09d", current_id); }
-    else if (strcmp(type, "user") == 0) { sprintf(next_id_str, "USR%09d", current_id); }
-    else { sprintf(next_id_str, "ID%09d", current_id); }
-    return next_id_str;
+__declspec(dllexport) int create_project(const char* projects_filepath, const char* projectID, const char* name, const char* description, const char* ownerID) {
+    if (!projectID) return 0;
+    cJSON *root = read_json_from_file(projects_filepath);
+    if (!cJSON_IsArray(root)) { cJSON_Delete(root); root = cJSON_CreateArray(); }
+
+    cJSON *project = cJSON_CreateObject();
+    cJSON_AddStringToObject(project, "projectID", projectID);
+    cJSON_AddStringToObject(project, "name", name);
+    cJSON_AddStringToObject(project, "description", description);
+    cJSON_AddStringToObject(project, "ownerID", ownerID);
+    cJSON_AddStringToObject(project, "status", "Pending");
+
+    cJSON *members = cJSON_CreateArray();
+    cJSON *owner_member = cJSON_CreateObject();
+    cJSON_AddStringToObject(owner_member, "id", ownerID);
+    cJSON_AddItemToArray(members, owner_member);
+    
+    cJSON_AddItemToObject(project, "members", members);
+    cJSON_AddItemToObject(project, "tasks", cJSON_CreateArray());
+    cJSON_AddItemToArray(root, project);
+
+    write_json_to_file(projects_filepath, root);
+    cJSON_Delete(root);
+    return 1;
 }
 
-EXPORT void create_project(char *name, char *description, char *ownerID, char *startDate, char *endDate, int status, char **memberID, int currentMember) {
-    cJSON *projects_array = load_all_projects_as_json_array(JSON_PROJECT_FILE);
-    cJSON *project_json = cJSON_CreateObject();
-    char* new_id = get_next_id("project");
-    if(new_id == NULL) { cJSON_Delete(projects_array); cJSON_Delete(project_json); return; }
-    cJSON_AddStringToObject(project_json, "projectID", new_id);
-    free(new_id);
-    cJSON_AddStringToObject(project_json, "name", name);
-    cJSON_AddStringToObject(project_json, "description", description);
-    cJSON_AddStringToObject(project_json, "ownerID", ownerID);
-    cJSON_AddStringToObject(project_json, "startDate", startDate);
-    cJSON_AddStringToObject(project_json, "endDate", endDate);
-    cJSON_AddStringToObject(project_json, "status", "Pending");
-    cJSON *member_array = cJSON_CreateArray();
-    for (int i = 0; i < currentMember; i++) {
-        cJSON *member_obj = cJSON_CreateObject();
-        cJSON_AddStringToObject(member_obj, "id", memberID[i]);
-        cJSON_AddItemToArray(member_array, member_obj);
-    }
-    cJSON_AddItemToObject(project_json, "members", member_array);
-    cJSON_AddItemToObject(project_json, "tasks", cJSON_CreateArray());
-    cJSON_AddItemToArray(projects_array, project_json);
-    write_json_to_file(JSON_PROJECT_FILE, projects_array);
-    cJSON_Delete(projects_array);
-}
+__declspec(dllexport) int add_task_to_project(const char* projects_filepath, const char* projectID, const char* taskID, const char* title, const char* description) {
+    if (!taskID) return 0;
+    cJSON *root = read_json_from_file(projects_filepath);
+    if (!cJSON_IsArray(root)) { cJSON_Delete(root); return 0; }
 
-EXPORT void delete_project_by_id(const char* projectID) {
-    if (projectID == NULL) return;
-    cJSON *projects_array = load_all_projects_as_json_array(JSON_PROJECT_FILE);
-    if (projects_array == NULL) return;
-    cJSON *new_projects_array = cJSON_CreateArray();
-    if (new_projects_array == NULL) { cJSON_Delete(projects_array); return; }
-    cJSON *project_item = NULL;
-    cJSON_ArrayForEach(project_item, projects_array) {
-        cJSON *id_json = cJSON_GetObjectItemCaseSensitive(project_item, "projectID");
-        if (cJSON_IsString(id_json) && (strcmp(id_json->valuestring, projectID) != 0)) {
-            cJSON_AddItemToArray(new_projects_array, cJSON_Duplicate(project_item, 1));
-        }
-    }
-    write_json_to_file(JSON_PROJECT_FILE, new_projects_array);
-    cJSON_Delete(projects_array);
-    cJSON_Delete(new_projects_array);
-}
-
-EXPORT void add_task_to_project(const char* projectID, const char* title, const char* description, const char* assigneeID) {
-    if (projectID == NULL || title == NULL) return;
-    cJSON *projects_array = load_all_projects_as_json_array(JSON_PROJECT_FILE);
-    cJSON *project_item = NULL;
-    cJSON_ArrayForEach(project_item, projects_array) {
-        cJSON *id_json = cJSON_GetObjectItemCaseSensitive(project_item, "projectID");
-        if (cJSON_IsString(id_json) && (strcmp(id_json->valuestring, projectID) == 0)) {
-            cJSON* tasks_array = cJSON_GetObjectItemCaseSensitive(project_item, "tasks");
-            if (!cJSON_IsArray(tasks_array)) {
-                tasks_array = cJSON_CreateArray();
-                cJSON_AddItemToObject(project_item, "tasks", tasks_array);
-            }
-            cJSON* new_task = cJSON_CreateObject();
-            char* new_task_id = get_next_id("task");
-            if(new_task_id == NULL) break;
-            cJSON_AddStringToObject(new_task, "taskID", new_task_id);
-            free(new_task_id);
+    int found = 0;
+    cJSON *p_item;
+    cJSON_ArrayForEach(p_item, root) {
+        cJSON *p_id_json = cJSON_GetObjectItem(p_item, "projectID");
+        if (p_id_json && cJSON_IsString(p_id_json) && strcmp(p_id_json->valuestring, projectID) == 0) {
+            found = 1;
+            cJSON *tasks = cJSON_GetObjectItem(p_item, "tasks");
+            if (!cJSON_IsArray(tasks)) { tasks = cJSON_CreateArray(); cJSON_ReplaceItemInObject(p_item, "tasks", tasks); }
+            cJSON *new_task = cJSON_CreateObject();
+            cJSON_AddStringToObject(new_task, "taskID", taskID);
             cJSON_AddStringToObject(new_task, "title", title);
-            cJSON_AddStringToObject(new_task, "description", description ? description : "");
-            cJSON_AddStringToObject(new_task, "assigneeID", assigneeID ? assigneeID : "");
+            cJSON_AddStringToObject(new_task, "description", description);
+            cJSON_AddStringToObject(new_task, "assigneeID", "");
             cJSON_AddStringToObject(new_task, "status", "Todo");
-            cJSON_AddItemToArray(tasks_array, new_task);
+            cJSON_AddItemToArray(tasks, new_task);
             break;
         }
     }
-    write_json_to_file(JSON_PROJECT_FILE, projects_array);
-    cJSON_Delete(projects_array);
+
+    if(found) write_json_to_file(projects_filepath, root);
+    cJSON_Delete(root);
+    return found;
 }
 
-EXPORT void free_c_string(char* str) {
-    if (str != NULL) {
-        free(str);
-    }
-}
+// =============================================================
+// ==================== HÀM MỚI ĐƯỢC THÊM ======================
+// =============================================================
+__declspec(dllexport) int delete_task_from_project(const char* filepath, const char* projectID, const char* taskID) {
+    cJSON *root = read_json_from_file(filepath);
+    if (!root) return 0;
 
-EXPORT void update_task_status(const char* projectID, const char* taskID, const char* newStatus) {
-    if (projectID == NULL || taskID == NULL || newStatus == NULL) return;
+    int deleted = 0;
+    cJSON *p_item;
+    cJSON_ArrayForEach(p_item, root) {
+        cJSON *p_id_json = cJSON_GetObjectItem(p_item, "projectID");
+        if (p_id_json && cJSON_IsString(p_id_json) && strcmp(p_id_json->valuestring, projectID) == 0) {
+            cJSON *tasks = cJSON_GetObjectItem(p_item, "tasks");
+            if (!cJSON_IsArray(tasks)) break;
 
-    cJSON *projects_array = load_all_projects_as_json_array(JSON_PROJECT_FILE);
-    cJSON *project_item = NULL;
-
-    cJSON_ArrayForEach(project_item, projects_array) {
-        cJSON *p_id_json = cJSON_GetObjectItemCaseSensitive(project_item, "projectID");
-        if (cJSON_IsString(p_id_json) && (strcmp(p_id_json->valuestring, projectID) == 0)) {
-            
-            cJSON* tasks_array = cJSON_GetObjectItemCaseSensitive(project_item, "tasks");
-            if (!cJSON_IsArray(tasks_array)) {
-                break;
-            }
-
-            cJSON* task_item = NULL;
-            cJSON_ArrayForEach(task_item, tasks_array) {
-                cJSON* t_id_json = cJSON_GetObjectItemCaseSensitive(task_item, "taskID");
-                if (cJSON_IsString(t_id_json) && (strcmp(t_id_json->valuestring, taskID) == 0)) {
-                    cJSON_ReplaceItemInObject(task_item, "status", cJSON_CreateString(newStatus));
+            int task_index = -1;
+            int current_index = 0;
+            cJSON *t_item;
+            cJSON_ArrayForEach(t_item, tasks) {
+                cJSON *t_id_json = cJSON_GetObjectItem(t_item, "taskID");
+                if (t_id_json && cJSON_IsString(t_id_json) && strcmp(t_id_json->valuestring, taskID) == 0) {
+                    task_index = current_index;
                     break;
                 }
+                current_index++;
+            }
+            if (task_index != -1) {
+                cJSON_DeleteItemFromArray(tasks, task_index);
+                deleted = 1;
             }
             break;
         }
     }
+    
+    if (deleted) write_json_to_file(filepath, root);
+    cJSON_Delete(root);
+    return deleted;
+}
+// =============================================================
 
-    write_json_to_file(JSON_PROJECT_FILE, projects_array);
-    cJSON_Delete(projects_array);
+__declspec(dllexport) int delete_project_by_id(const char* filepath, const char* projectID) {
+    cJSON *root = read_json_from_file(filepath);
+    if (!root) return 0;
+    cJSON *new_root = cJSON_CreateArray();
+    int deleted = 0;
+    cJSON *item;
+    cJSON_ArrayForEach(item, root) {
+        cJSON *id_json = cJSON_GetObjectItem(item, "projectID");
+        if (cJSON_IsString(id_json) && (strcmp(id_json->valuestring, projectID) == 0)) { deleted = 1; } 
+        else { cJSON_AddItemToArray(new_root, cJSON_Duplicate(item, 1)); }
+    }
+    if (deleted) write_json_to_file(filepath, new_root);
+    cJSON_Delete(root); cJSON_Delete(new_root);
+    return deleted;
+}
+
+__declspec(dllexport) int update_project_by_id(const char* filepath, const char* projectID, const char* newName, const char* newDescription) {
+    cJSON *root = read_json_from_file(filepath);
+    if (!root) return 0;
+    int updated = 0;
+    cJSON *item;
+    cJSON_ArrayForEach(item, root) {
+        cJSON *id_json = cJSON_GetObjectItem(item, "projectID");
+        if (cJSON_IsString(id_json) && strcmp(id_json->valuestring, projectID) == 0) {
+            cJSON_ReplaceItemInObject(item, "name", cJSON_CreateString(newName));
+            cJSON_ReplaceItemInObject(item, "description", cJSON_CreateString(newDescription));
+            updated = 1; break;
+        }
+    }
+    if (updated) write_json_to_file(filepath, root);
+    cJSON_Delete(root);
+    return updated;
+}
+
+__declspec(dllexport) int update_task_status(const char* filepath, const char* projectID, const char* taskID, const char* newStatus) {
+    cJSON *root = read_json_from_file(filepath);
+    if (!root) return 0;
+    int updated = 0;
+    cJSON *p_item;
+    cJSON_ArrayForEach(p_item, root) {
+        cJSON *p_id_json = cJSON_GetObjectItem(p_item, "projectID");
+        if (p_id_json && cJSON_IsString(p_id_json) && strcmp(p_id_json->valuestring, projectID) == 0) {
+            cJSON *tasks = cJSON_GetObjectItem(p_item, "tasks");
+            cJSON *t_item;
+            cJSON_ArrayForEach(t_item, tasks) {
+                cJSON *t_id_json = cJSON_GetObjectItem(t_item, "taskID");
+                if (t_id_json && cJSON_IsString(t_id_json) && strcmp(t_id_json->valuestring, taskID) == 0) {
+                    cJSON_ReplaceItemInObject(t_item, "status", cJSON_CreateString(newStatus));
+                    updated = 1; break;
+                }
+            }
+            if(updated) break;
+        }
+    }
+    if (updated) write_json_to_file(filepath, root);
+    cJSON_Delete(root);
+    return updated;
 }
