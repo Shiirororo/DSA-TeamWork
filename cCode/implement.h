@@ -1,23 +1,58 @@
-// File: cCode/implement.h
 #ifndef IMPLEMENT_H
 #define IMPLEMENT_H
 
-#define EXPORT __declspec(dllexport)
-
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "cJSON.h"
 #include "struct.h"
 
-// Hàm quản lý ID
-EXPORT char* get_next_id(const char* type);
+// =================================================================
+// I. CÁC HÀM CƠ BẢN VỀ CẤU TRÚC DỮ LIỆU (DSLK, STACK)
+// =================================================================
 
-// Các hàm quản lý Project
-EXPORT void create_project(char *name, char *description, char *ownerID, char *startDate, char *endDate, int status, char **memberID, int currentMember);
-EXPORT void delete_project_by_id(const char* projectID);
+// --- Danh sách liên kết ---
+Node* createNode(void* data);
+Node* appendNode(Node* head, Node* newNode);
+Node* prependNode(Node* head, Node* newNode);
+Node* deleteNode(Node* head, void* data_to_delete, int (*compare_func)(const void*, const void*));
+int countNodes(Node* head);
+void printList(Node* head, void (*print_func)(void*));
 
-// Các hàm quản lý Task
-EXPORT void add_task_to_project(const char* projectID, const char* title, const char* description, const char* assigneeID);
-EXPORT void update_task_status(const char* projectID, const char* taskID, const char* newStatus);
+// --- Stack ---
+Stack* createStack();
+void push(Stack* stack, void* data);
+void* pop(Stack* stack);
+int isStackEmpty(Stack* stack);
 
-// Hàm giải phóng bộ nhớ cho chuỗi
-EXPORT void free_c_string(char* str);
+// =================================================================
+// II. CÁC HÀM TIỆN ÍCH (FILE I/O)
+// =================================================================
+cJSON* read_json_from_file(const char* filepath);
+int write_json_to_file(const char* filepath, cJSON* json);
+
+
+// =================================================================
+// III. CÁC HÀM CHUYỂN ĐỔI (JSON <-> DANH SÁCH LIÊN KẾT)
+// =================================================================
+
+// --- Chuyển đổi TỪ JSON sang Danh sách liên kết ---
+Node* cjsonToTaskList(cJSON* tasks_json_array);
+Node* cjsonToMemberList(cJSON* member_ids_json_array, cJSON* all_members_json_array);
+Node* cjsonToProjectList(cJSON* projects_json_array, const char* member_filepath);
+
+// --- Chuyển đổi TỪ Danh sách liên kết sang JSON ---
+cJSON* taskListToCjson(Node* head);
+cJSON* memberListToCjson(Node* head);
+cJSON* projectListToCjson(Node* head);
+
+
+// =================================================================
+// IV. CÁC HÀM QUẢN LÝ BỘ NHỚ
+// =================================================================
+void freeTaskList(Node* head);
+void freeMemberList(Node* head);
+void freeProjectList(Node* head);
+
 
 #endif // IMPLEMENT_H

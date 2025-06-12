@@ -11,6 +11,7 @@
                 "cCode/lib/createProject.dll",
                 "cCode/createProject.c",
                 "cCode/implement.c",
+                "cCode/validation.c", // <--- THÊM DÒNG NÀY VÀO
                 "external/cJSON/cJSON.c",
                 "-I",
                 "cCode/",
@@ -21,31 +22,37 @@
                 "kind": "build",
                 "isDefault": true
             },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
             "problemMatcher": [
                 "$gcc"
-            ],
-            "detail": "Biên dịch các file C thành createProject.dll (phiên bản đơn giản)"
+            ]
         },
         {
-            "label": "Build Test ID Program",
+            "label": "Run Python",
             "type": "shell",
-            "command": "gcc",
+            "command": "python",
             "args": [
-                "-g",
-                "cCode/test_id.c",
-                "cCode/createProject.c",
-                "cCode/implement.c",
-                "external/cJSON/cJSON.c",
-                "-I",
-                "cCode/",
-                "-I",
-                "external/cJSON/",
-                "-o",
-                "c_test.exe"
+                "run.py"
             ],
-            "group": "build",
-            "problemMatcher": ["$gcc"],
-            "detail": "Biên dịch chương trình C để kiểm tra hàm get_next_id"
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": true
+            }
         }
     ]
 }

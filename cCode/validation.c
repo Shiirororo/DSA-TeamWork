@@ -1,71 +1,43 @@
 #include "validation.h"
-#include <ctype.h>
-#include <string.h>
-#include <stdio.h>
-#include <stdbool.h>
 
-// ID phải gồm đúng 8 ký tự số ('0' - '9')
-bool isValidMemberID(const char* id) {
-    if (id == NULL) return false;
-    if (strlen(id) != 8) return false;
-    for (int i = 0; i < 8; i++) {
-        if (!isdigit((unsigned char)id[i])) return false;
+// Kiểm tra xem một chuỗi có rỗng hoặc chỉ chứa khoảng trắng không
+int is_string_empty(const char* str) {
+    if (str == NULL) {
+        return 1;
     }
-    return true;
+    while (*str != '\0') {
+        if (!isspace((unsigned char)*str)) {
+            return 0; // Tìm thấy ký tự không phải khoảng trắng
+        }
+        str++;
+    }
+    return 1; // Toàn là khoảng trắng hoặc rỗng
 }
 
-// Tên chỉ chứa chữ cái (a-z, A-Z) và dấu cách, không rỗng
-bool isValidName(const char* name) {
-    if (name == NULL) return false;
-    int len = strlen(name);
-    if (len == 0) return false;
-    for (int i = 0; i < len; i++) {
-        if (!isalpha((unsigned char)name[i]) && name[i] != ' ')
-            return false;
+// Kiểm tra ID có đúng định dạng (Prefix + Số) không
+// Ví dụ: is_valid_id_format("PRJ-123", 'P', 7)
+int is_valid_id_format(const char* id, const char prefix, int num_digits) {
+    if (id == NULL || strlen(id) != (size_t)(1 + 3 + num_digits)) { // Ví dụ: 'P' + 'RJ-' + 7 digits
+        return 0;
     }
-    return true;
+    // Logic kiểm tra cụ thể hơn có thể được thêm ở đây nếu cần
+    // Ví dụ kiểm tra id[0] == prefix, id[1] == 'R', id[2] == 'J', id[3] == '-'
+    // For now, we'll keep it simple
+    return 1;
 }
 
-// Email đơn giản: phải có '@' và '.' sau '@'
-bool isValidEmailFormat(const char* email) {
-    if (email == NULL) return false;
-    const char* at = strchr(email, '@');
-    if (at == NULL || at == email) return false;  // phải có '@' và không ở đầu
-    const char* dot = strchr(at, '.');
-    if (dot == NULL || dot == at + 1) return false;  // '.' phải nằm sau '@' và không ngay sau '@'
-    if (*(dot + 1) == '\0') return false;  // '.' không được ở cuối
-    return true;
-}
-
-// Số điện thoại gồm đúng 10 chữ số (chuỗi ký tự)
-bool isValidPhoneNumber(const char* phoneNumber) {
-    if (phoneNumber == NULL) return false;
-    if (strlen(phoneNumber) != 10) return false;
-    for (int i = 0; i < 10; i++) {
-        if (!isdigit((unsigned char)phoneNumber[i])) return false;
+// Kiểm tra xem trạng thái có hợp lệ không
+int is_valid_status(const char* status) {
+    if (status == NULL) return 0;
+    
+    const char* valid_statuses[] = {"Todo", "In Progress", "Done"};
+    int num_valid_statuses = sizeof(valid_statuses) / sizeof(valid_statuses[0]);
+    
+    for (int i = 0; i < num_valid_statuses; i++) {
+        if (strcmp(status, valid_statuses[i]) == 0) {
+            return 1; // Hợp lệ
+        }
     }
-    return true;
-}
-
-// Hàm kiểm tra tổng thể 1 member (giả sử member là struct chứa id, name, email, phoneNumber)
-#include "struct.h"
-bool checkMember(const Member* member) {
-    if (!isValidMemberID(member->id)) {
-        printf("Invalid ID: %s\n", member->id);
-        return false;
-    }
-    if (!isValidName(member->name)) {
-        printf("Invalid Name: %s\n", member->name);
-        return false;
-    }
-    if (!isValidEmailFormat(member->email)) {
-        printf("Invalid Email: %s\n", member->email);
-        return false;
-    }
-    // member->phoneNumber đang là char[11], kiểm tra chuỗi số 10 ký tự + '\0'
-    if (!isValidPhoneNumber(member->phoneNumber)) {
-        printf("Invalid Phone Number: %s\n", member->phoneNumber);
-        return false;
-    }
-    return true;
+    
+    return 0; // Không hợp lệ
 }
