@@ -339,3 +339,226 @@ DLL_EXPORT int assign_task_to_member(const char* filepath, const char* projectID
     cJSON_Delete(root);
     return updated;
 }
+
+DLL_EXPORT int register_user(const char* member_filepath, const char* password_filepath,
+                             const char* user_id, const char* name, const char* username,
+                             const char* password, const char* email, const char* phone, const char* role)
+{
+    cJSON* members = read_json_from_file(member_filepath);
+    if (!members) members = cJSON_CreateArray();
+
+    cJSON* passwords = read_json_from_file(password_filepath);
+    if (!passwords) passwords = cJSON_CreateArray();
+
+    // Kiểm tra username hoặc email đã tồn tại chưa
+    cJSON* item;
+    cJSON_ArrayForEach(item, passwords) {
+        if (strcmp(cJSON_GetObjectItem(item, "username")->valuestring, username) == 0) {
+            cJSON_Delete(members);
+            cJSON_Delete(passwords);
+            return -1; // Username exists
+        }
+    }
+    cJSON_ArrayForEach(item, members) {
+        if (cJSON_HasObjectItem(item, "email") && strcmp(cJSON_GetObjectItem(item, "email")->valuestring, email) == 0) {
+            cJSON_Delete(members);
+            cJSON_Delete(passwords);
+            return -2; // Email exists
+        }
+    }
+
+    // Thêm member mới
+    cJSON* new_member = cJSON_CreateObject();
+    cJSON_AddStringToObject(new_member, "id", user_id);
+    cJSON_AddStringToObject(new_member, "name", name);
+    cJSON_AddStringToObject(new_member, "role", role);
+    cJSON_AddStringToObject(new_member, "email", email);
+    cJSON_AddStringToObject(new_member, "phone", phone);
+    cJSON_AddItemToArray(members, new_member);
+
+    // Thêm password mới
+    cJSON* new_pass = cJSON_CreateObject();
+    cJSON_AddStringToObject(new_pass, "id", user_id);
+    cJSON_AddStringToObject(new_pass, "username", username);
+    cJSON_AddStringToObject(new_pass, "password", password);
+    cJSON_AddItemToArray(passwords, new_pass);
+
+    // Ghi lại file
+    int success1 = write_json_to_file(member_filepath, members);
+    int success2 = write_json_to_file(password_filepath, passwords);
+
+    cJSON_Delete(members);
+    cJSON_Delete(passwords);
+
+    return (success1 && success2) ? 1 : 0;
+}
+
+
+DLL_EXPORT int delete_user_by_id_c(const char* member_filepath, const char* password_filepath, const char* user_id)
+{
+    // Xóa trong member.json
+    cJSON* members = read_json_from_file(member_filepath);
+    int i = 0, found = 0;
+    cJSON* item;
+    cJSON_ArrayForEach(item, members) {
+        if (strcmp(cJSON_GetObjectItem(item, "id")->valuestring, user_id) == 0) {
+            cJSON_DeleteItemFromArray(members, i);
+            write_json_to_file(member_filepath, members);
+            found = 1;
+            break;
+        }
+        i++;
+    }
+    cJSON_Delete(members);
+
+    // Xóa trong password.json
+    cJSON* passwords = read_json_from_file(password_filepath);
+    i = 0;
+    cJSON_ArrayForEach(item, passwords) {
+        if (strcmp(cJSON_GetObjectItem(item, "id")->valuestring, user_id) == 0) {
+            cJSON_DeleteItemFromArray(passwords, i);
+            write_json_to_file(password_filepath, passwords);
+            found = 1;
+            break;
+        }
+        i++;
+    }
+    cJSON_Delete(passwords);
+
+    return found;
+}
+
+DLL_EXPORT int update_user_role_c(const char* member_filepath, const char* user_id, const char* new_role)
+{
+    cJSON* members = read_json_from_file(member_filepath);
+    if (!members) return 0;
+
+    int updated = 0;
+    cJSON* item;
+    cJSON_ArrayForEach(item, members) {
+        if (strcmp(cJSON_GetObjectItem(item, "id")->valuestring, user_id) == 0) {
+            cJSON_ReplaceItemInObject(item, "role", cJSON_CreateString(new_role));
+            write_json_to_file(member_filepath, members);
+            updated = 1;
+            break;
+        }
+    }
+    cJSON_Delete(members);
+    return updated;
+}
+
+
+DLL_EXPORT int change_password_c(const char* password_filepath, const char* user_id, const char* old_pass, const char* new_pass)
+{
+    if (is_string_empty(old_pass) || is_string_empty(new_pass)) return -2; // Empty passwords not allowed
+
+    cJSON* passwords = read_json_from_file(password_filepath);
+    if (!passwords) return 0;
+
+    int result = 0; // 0 = user not found
+    cJSON* item;
+    cJSON_ArrayForEach(item, passwords) {
+        if (strcmp(cJSON_GetObjectItem(item, "id")->valuestring, user_id) == 0) {
+            if (strcmp(cJSON_GetObjectItem(item, "password")->valuestring, old_pass) == 0) {
+                cJSON_ReplaceItemInObject(item, "password", cJSON_CreateString(new_pass));
+                write_json_to_file(password_filepath, passwords);
+                result = 1; // Success
+            } else {
+                result = -1; // Wrong old password
+            }
+            break;
+        }
+    }
+    cJSON_Delete(passwords);
+    return result;
+}
+
+DLL_EXPORT int delete_user_by_id(const char* member_filepath, const char* password_filepath, const char* user_id)
+{
+    // --- [MỚI] KIỂM TRA SUPER ADMIN ---
+    // Đọc file password để kiểm tra username
+    cJSON* passwords_check = read_json_from_file(password_filepath);
+    cJSON* item_check;
+    int is_super_admin = 0;
+    cJSON_ArrayForEach(item_check, passwords_check) {
+        // Tìm đúng user bằng ID
+        if (strcmp(cJSON_GetObjectItem(item_check, "id")->valuestring, user_id) == 0) {
+            // Kiểm tra xem username có phải là "superadmin" không
+            if (strcmp(cJSON_GetObjectItem(item_check, "username")->valuestring, "superadmin") == 0) {
+                is_super_admin = 1;
+            }
+            break;
+        }
+    }
+    cJSON_Delete(passwords_check);
+    
+    if (is_super_admin) {
+        return -1; // Mã lỗi -1: Không được phép xóa Super Admin
+    }
+    // --- KẾT THÚC KIỂM TRA ---
+
+    // Xóa trong member.json
+    cJSON* members = read_json_from_file(member_filepath);
+    int i = 0, found = 0;
+    cJSON* item;
+    cJSON_ArrayForEach(item, members) {
+        if (strcmp(cJSON_GetObjectItem(item, "id")->valuestring, user_id) == 0) {
+            cJSON_DeleteItemFromArray(members, i);
+            write_json_to_file(member_filepath, members);
+            found = 1;
+            break;
+        }
+        i++;
+    }
+    cJSON_Delete(members);
+
+    // Xóa trong password.json nếu đã tìm thấy và xóa trong member.json
+    if(found) {
+        cJSON* passwords = read_json_from_file(password_filepath);
+        i = 0;
+        cJSON_ArrayForEach(item, passwords) {
+            if (strcmp(cJSON_GetObjectItem(item, "id")->valuestring, user_id) == 0) {
+                cJSON_DeleteItemFromArray(passwords, i);
+                write_json_to_file(password_filepath, passwords);
+                break;
+            }
+            i++;
+        }
+        cJSON_Delete(passwords);
+    }
+
+    return found ? 1 : 0; // 1: Thành công, 0: Không tìm thấy
+}
+
+DLL_EXPORT int update_user_role(const char* member_filepath, const char* user_id, const char* new_role)
+{
+    cJSON* members = read_json_from_file(member_filepath);
+    if (!members) return 0;
+
+    // --- [MỚI] KIỂM TRA SUPER ADMIN ---
+    // Không cho phép đổi vai trò của Super Admin
+    cJSON* check_item;
+    cJSON_ArrayForEach(check_item, members) {
+        if (strcmp(cJSON_GetObjectItem(check_item, "id")->valuestring, user_id) == 0) {
+             if (strcmp(cJSON_GetObjectItem(check_item, "role")->valuestring, "Super Admin") == 0) {
+                cJSON_Delete(members);
+                return -1; // Mã lỗi -1: Không được phép thay đổi
+             }
+             break;
+        }
+    }
+    // --- KẾT THÚC KIỂM TRA ---
+
+    int updated = 0;
+    cJSON* item;
+    cJSON_ArrayForEach(item, members) {
+        if (strcmp(cJSON_GetObjectItem(item, "id")->valuestring, user_id) == 0) {
+            cJSON_ReplaceItemInObject(item, "role", cJSON_CreateString(new_role));
+            write_json_to_file(member_filepath, members);
+            updated = 1;
+            break;
+        }
+    }
+    cJSON_Delete(members);
+    return updated; // 1: Thành công, 0: Không tìm thấy
+}

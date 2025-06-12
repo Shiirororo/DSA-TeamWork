@@ -1,93 +1,145 @@
+import customtkinter as ctk
 import json
-import uuid
 import os
-from .log import log_setting
+import ctypes
 
-logger = log_setting(__name__)
+# --- PATH SETUP ---
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MEMBER_FILE = os.path.join(base_dir, 'data store', 'member.json')
-PASSWORD_FILE = os.path.join(base_dir, 'data store', 'password.json')
+try:
+    # Thử đường dẫn cho Windows
+    DLL_PATH = os.path.abspath(os.path.join(base_dir, 'cCode', 'lib', 'createProject.dll'))
+    c_lib = ctypes.CDLL(DLL_PATH)
+except OSError:
+    # Thử đường dẫn cho macOS hoặc Linux nếu có
+    DLL_PATH = os.path.abspath(os.path.join(base_dir, 'cCode', 'lib', 'createProject.so'))
+    c_lib = ctypes.CDLL(DLL_PATH)
 
-def _read_json_file(file_path):
-    """Hàm nội bộ để đọc file JSON một cách an toàn."""
+MEMBER_FILE_PATH = os.path.join(base_dir, 'data store', 'member.json')
+PASSWORD_FILE_PATH = os.path.join(base_dir, 'data store', 'password.json')
+
+# --- HÀM TRỢ GIÚP ĐỌC/GHI FILE (Vẫn giữ để đọc file cho các hàm đơn giản)---
+def _read_json(filepath):
     try:
-        if not os.path.exists(file_path): return []
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+            if not content: return []
+            return json.loads(content)
+    except (FileNotFoundError, json.JSONDecodeError):
         return []
 
-def _write_json_file(file_path, data):
-    """Hàm nội bộ để ghi file JSON."""
-    with open(file_path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
+# --- [QUAN TRỌNG] KHAI BÁO CÁC HÀM C MỚI ---
+def setup_c_signatures():
+    global register_user_c, delete_user_c, update_user_role_c, change_password_c
+
+    # int register_user(...)
+    register_user_c = c_lib.register_user
+    register_user_c.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
+    register_user_c.restype = ctypes.c_int
+
+    # int delete_user_by_id_c(...)
+    delete_user_c = c_lib.delete_user_by_id_c
+    delete_user_c.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
+    delete_user_c.restype = ctypes.c_int
+
+    # int update_user_role_c(...)
+    update_user_role_c = c_lib.update_user_role_c
+    update_user_role_c.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
+    update_user_role_c.restype = ctypes.c_int
+    
+    # int change_password_c(...)
+    change_password_c = c_lib.change_password_c
+    change_password_c.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
+    change_password_c.restype = ctypes.c_int
+
+# Gọi hàm để thiết lập các khai báo
+setup_c_signatures()
+
+# --- PYTHON WRAPPER FUNCTIONS (Bỏ logic cũ, gọi C) ---
+
+def get_all_users():
+    """Lấy danh sách tất cả người dùng (vẫn dùng Python vì đơn giản)."""
+    return _read_json(MEMBER_FILE_PATH)
 
 def check_credentials(username, password):
     """
-    Kiểm tra thông tin đăng nhập từ file password.json và lấy thông tin chi tiết
-    từ member.json. Trả về (True, user_info_dict) hoặc (False, None).
+    Kiểm tra thông tin đăng nhập và hợp nhất thông tin user.
     """
-    logger.debug(f"Đang kiểm tra đăng nhập cho user: {username}")
-    passwords = _read_json_file(PASSWORD_FILE)
-    members = _read_json_file(MEMBER_FILE)
+    passwords = _read_json(PASSWORD_FILE_PATH)
+    users = _read_json(MEMBER_FILE_PATH)
     
-    user_id = next((user.get('id') for user in passwords if user.get('username') == username and user.get('password') == password), None)
-            
-    if user_id:
-        user_info = next((member for member in members if member.get('id') == user_id), None)
-        if user_info:
-            logger.info(f"Đăng nhập thành công cho user: {username}")
-            return True, user_info
-    
-    logger.warning(f"Đăng nhập thất bại cho user: {username}")
+    for cred in passwords:
+        if cred.get('username') == username and cred.get('password') == password:
+            user_id = cred.get('id')
+            # Tìm thông tin chi tiết trong file member.json
+            for user_details in users:
+                if user_details.get('id') == user_id:
+                    # Hợp nhất thông tin từ cả hai file
+                    full_user_info = user_details.copy() # Bắt đầu với thông tin từ member.json
+                    full_user_info['username'] = cred.get('username') # Thêm username từ password.json
+                    
+                    # Chuyển đổi vai trò số thành chữ nếu cần
+                    if full_user_info.get('role') == 1:
+                        full_user_info['role'] = 'Admin'
+                    elif full_user_info.get('role') == 0:
+                        full_user_info['role'] = 'User'
+                        
+                    return True, full_user_info
     return False, None
 
-def register_user(username, password, name, email, phone):
-    """Đăng ký người dùng mới."""
-    passwords = _read_json_file(PASSWORD_FILE)
-    if any(user.get('username') == username for user in passwords):
-        return False, "Tên đăng nhập đã tồn tại"
-    
-    new_user_id = "USR-" + str(uuid.uuid4())
-    new_password_entry = {"username": username, "password": password, "id": new_user_id}
-    passwords.append(new_password_entry)
-    _write_json_file(PASSWORD_FILE, passwords)
-    
-    members = _read_json_file(MEMBER_FILE)
-    new_member_entry = {"id": new_user_id, "name": name, "role": "Member", "email": email, "phone": phone}
-    members.append(new_member_entry)
-    _write_json_file(MEMBER_FILE, members)
-    
-    return True, "Đăng ký thành công"
-
-def get_all_users():
-    """Lấy tất cả người dùng."""
-    return _read_json_file(MEMBER_FILE)
-
-def update_user_role(user_id, new_role):
-    """Cập nhật vai trò người dùng."""
-    members = _read_json_file(MEMBER_FILE)
-    user_found = False
-    for user in members:
-        if user.get('id') == user_id:
-            user['role'] = new_role
-            user_found = True
-            break
-    if user_found:
-        _write_json_file(MEMBER_FILE, members)
-        return True
-    return False
+def register_user(name, username, password, email, phone, role="User"):
+    """Đăng ký người dùng mới bằng cách gọi hàm C."""
+    new_user_id = "USR-" + os.urandom(4).hex()
+    result = register_user_c(
+        MEMBER_FILE_PATH.encode('utf-8'),
+        PASSWORD_FILE_PATH.encode('utf-8'),
+        new_user_id.encode('utf-8'),
+        name.encode('utf-8'),
+        username.encode('utf-8'),
+        password.encode('utf-8'),
+        email.encode('utf-8'),
+        phone.encode('utf-8'),
+        role.encode('utf-8')
+    )
+    if result == 1:
+        return True, "Đăng ký thành công!"
+    elif result == -1:
+        return False, "Tên đăng nhập đã tồn tại."
+    elif result == -2:
+        return False, "Email đã được sử dụng."
+    else:
+        return False, "Đã xảy ra lỗi khi đăng ký."
 
 def delete_user(user_id):
-    """Xóa người dùng khỏi cả 2 file member và password."""
-    members = _read_json_file(MEMBER_FILE)
-    passwords = _read_json_file(PASSWORD_FILE)
+    """Xóa người dùng bằng cách gọi hàm C."""
+    result = delete_user_c(
+        MEMBER_FILE_PATH.encode('utf-8'),
+        PASSWORD_FILE_PATH.encode('utf-8'),
+        user_id.encode('utf-8')
+    )
+    return result == 1
+
+def update_user_role(user_id, new_role):
+    """Cập nhật vai trò bằng cách gọi hàm C."""
+    result = update_user_role_c(
+        MEMBER_FILE_PATH.encode('utf-8'),
+        user_id.encode('utf-8'),
+        new_role.encode('utf-8')
+    )
+    return result == 1
     
-    new_members = [user for user in members if user.get('id') != user_id]
-    
-    if len(new_members) < len(members):
-        new_passwords = [p for p in passwords if p.get('id') != user_id]
-        _write_json_file(MEMBER_FILE, new_members)
-        _write_json_file(PASSWORD_FILE, new_passwords)
-        return True
-    return False
+def change_password(user_id, old_password, new_password):
+    """Thay đổi mật khẩu bằng cách gọi hàm C."""
+    result = change_password_c(
+        PASSWORD_FILE_PATH.encode('utf-8'),
+        user_id.encode('utf-8'),
+        old_password.encode('utf-8'),
+        new_password.encode('utf-8')
+    )
+    if result == 1:
+        return True, "Đổi mật khẩu thành công!"
+    elif result == -1:
+        return False, "Mật khẩu cũ không chính xác."
+    elif result == -2:
+        return False, "Mật khẩu không được để trống."
+    else:
+        return False, "Không tìm thấy người dùng hoặc đã xảy ra lỗi."

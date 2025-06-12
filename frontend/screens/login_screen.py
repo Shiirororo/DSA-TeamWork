@@ -155,13 +155,18 @@ class LoginPage(ctk.CTkFrame):
         RegisterScreen(master=self.app, logger_main=self.logger)
 
     def login(self):
+        """Xử lý logic đăng nhập."""
         username = self.username_entry.get()
         password = self.password_entry.get()
+
         if not username or not password:
-            CTkMessagebox(title="Lỗi", message="Vui lòng nhập đầy đủ thông tin.", icon="cancel")
+            CTkMessagebox(title="Lỗi", message="Vui lòng nhập đầy đủ thông tin.", icon="cancel", master=self.app)
             return
+            
+        # [QUAN TRỌNG] Gọi hàm check_credentials từ module_user
         is_valid, user_info = module_user.check_credentials(username, password)
+        
         if is_valid:
             self.app.on_login_success(user_info)
         else:
-            CTkMessagebox(title="Lỗi", message="Tên đăng nhập hoặc mật khẩu không chính xác.", icon="cancel")
+            CTkMessagebox(title="Lỗi", message="Tên đăng nhập hoặc mật khẩu không chính xác.", icon="cancel", master=self.app)

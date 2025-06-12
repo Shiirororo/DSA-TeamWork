@@ -1,96 +1,74 @@
 import customtkinter as ctk
 from CTkMessagebox import CTkMessagebox
 from middleware import module_user
-from middleware.log import log_setting
-
-logger = log_setting(__name__)
 
 class RegisterScreen(ctk.CTkToplevel):
-    def __init__(self, master, logger_main):
-        super().__init__(master)
+    def __init__(self, master, logger_main, **kwargs):
+        super().__init__(master, **kwargs)
+        self.app = master
         self.logger = logger_main
-        self.title("Tạo Tài Khoản Mới")
-        self.geometry("400x650") # Tăng chiều cao cửa sổ
+        self.title("Đăng Ký Tài Khoản Mới")
+        self.geometry("400x600") # Tăng chiều cao để chứa thêm trường
         self.transient(master)
         self.grab_set()
 
-        ctk.CTkLabel(self, text="Đăng Ký Tài Khoản", font=ctk.CTkFont(size=20, weight="bold")).pack(pady=20)
+        # --- Giao diện ---
+        frame = ctk.CTkFrame(self)
+        frame.pack(expand=True, fill="both", padx=20, pady=20)
+        
+        ctk.CTkLabel(frame, text="Tạo Tài Khoản", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(10, 20))
+        
+        ctk.CTkLabel(frame, text="Họ và tên").pack(anchor="w", padx=20)
+        self.full_name_entry = ctk.CTkEntry(frame, width=300)
+        self.full_name_entry.pack(pady=(5, 15))
 
-        ctk.CTkLabel(self, text="Tên đầy đủ:").pack(padx=20, anchor="w")
-        self.full_name_entry = ctk.CTkEntry(self, width=360)
-        self.full_name_entry.pack(padx=20, pady=5, fill="x")
+        ctk.CTkLabel(frame, text="Tên đăng nhập").pack(anchor="w", padx=20)
+        self.username_entry = ctk.CTkEntry(frame, width=300)
+        self.username_entry.pack(pady=(5, 15))
 
-        ctk.CTkLabel(self, text="Tên đăng nhập:").pack(padx=20, pady=(10,0), anchor="w")
-        self.username_entry = ctk.CTkEntry(self, width=360)
-        self.username_entry.pack(padx=20, pady=5, fill="x")
+        ctk.CTkLabel(frame, text="Email").pack(anchor="w", padx=20)
+        self.email_entry = ctk.CTkEntry(frame, width=300)
+        self.email_entry.pack(pady=(5, 15))
 
-        # =============================================================
-        # ==================== CODE MỚI BẮT ĐẦU =======================
-        # =============================================================
-        ctk.CTkLabel(self, text="Email:").pack(padx=20, pady=(10,0), anchor="w")
-        self.email_entry = ctk.CTkEntry(self, width=360)
-        self.email_entry.pack(padx=20, pady=5, fill="x")
+        ctk.CTkLabel(frame, text="Số điện thoại").pack(anchor="w", padx=20)
+        self.phone_entry = ctk.CTkEntry(frame, width=300)
+        self.phone_entry.pack(pady=(5, 15))
 
-        ctk.CTkLabel(self, text="Số điện thoại:").pack(padx=20, pady=(10,0), anchor="w")
-        self.phone_entry = ctk.CTkEntry(self, width=360)
-        self.phone_entry.pack(padx=20, pady=5, fill="x")
-        # =============================================================
-        # ===================== CODE MỚI KẾT THÚC ======================
-        # =============================================================
+        ctk.CTkLabel(frame, text="Mật khẩu (ít nhất 6 ký tự)").pack(anchor="w", padx=20)
+        self.password_entry = ctk.CTkEntry(frame, width=300, show="*")
+        self.password_entry.pack(pady=(5, 15))
 
-        ctk.CTkLabel(self, text="Mật khẩu:").pack(padx=20, pady=(10,0), anchor="w")
-        self.password_entry = ctk.CTkEntry(self, width=360, show="*")
-        self.password_entry.pack(padx=20, pady=5, fill="x")
-
-        ctk.CTkLabel(self, text="Xác nhận mật khẩu:").pack(padx=20, pady=(10,0), anchor="w")
-        self.confirm_password_entry = ctk.CTkEntry(self, width=360, show="*")
-        self.confirm_password_entry.pack(padx=20, pady=5, fill="x")
-
-        button_frame = ctk.CTkFrame(self, fg_color="transparent")
-        button_frame.pack(pady=30)
-        register_button = ctk.CTkButton(button_frame, text="Đăng Ký", command=self.submit_registration)
-        register_button.pack(side="left", padx=10)
-        cancel_button = ctk.CTkButton(button_frame, text="Hủy", fg_color="gray", command=self.destroy)
-        cancel_button.pack(side="left", padx=10)
+        ctk.CTkLabel(frame, text="Xác nhận mật khẩu").pack(anchor="w", padx=20)
+        self.confirm_password_entry = ctk.CTkEntry(frame, width=300, show="*")
+        self.confirm_password_entry.pack(pady=(5, 15))
+        
+        ctk.CTkButton(frame, text="Đăng ký", width=300, command=self.submit_registration).pack(pady=20)
 
     def submit_registration(self):
         full_name = self.full_name_entry.get()
         username = self.username_entry.get()
-        password = self.password_entry.get()
-        confirm_password = self.confirm_password_entry.get()
-        
-        # =============================================================
-        # ==================== CODE MỚI BẮT ĐẦU =======================
-        # =============================================================
         email = self.email_entry.get()
         phone = self.phone_entry.get()
+        password = self.password_entry.get()
+        confirm_password = self.confirm_password_entry.get()
 
         if not all([full_name, username, password, confirm_password, email, phone]):
             CTkMessagebox(master=self, title="Lỗi", message="Vui lòng điền đầy đủ thông tin.", icon="cancel")
             return
-        # =============================================================
-        # ===================== CODE MỚI KẾT THÚC ======================
-        # =============================================================
-            
+        
         if password != confirm_password:
             CTkMessagebox(master=self, title="Lỗi", message="Mật khẩu xác nhận không khớp.", icon="cancel")
             return
-
-        self.logger.info(f"Bắt đầu gọi middleware để đăng ký user: {username}")
         
-        # =============================================================
-        # ==================== DÒNG CODE ĐƯỢC SỬA ======================
-        # =============================================================
-        success, message = module_user.register_user(username, password, full_name, email, phone)
-        # =============================================================
-
+        self.logger.info(f"Đang gửi yêu cầu đăng ký cho user: {username}")
+        
+        # [ĐÃ SỬA] Thay đổi thứ tự tham số cho đúng với hàm mới
+        success, message = module_user.register_user(full_name, username, password, email, phone)
+        
         self.logger.info(f"Kết quả từ middleware: success={success}, message='{message}'")
-
+        
         if success:
-            self.logger.debug("Chuẩn bị hiển thị messagebox thành công.")
-            CTkMessagebox(master=self, title="Thành công", message=message, icon="check")
-            self.logger.debug("Đã hiển thị messagebox. Chuẩn bị hủy cửa sổ đăng ký.")
+            CTkMessagebox(master=self, title="Thành công", message="Đăng ký tài khoản thành công! Vui lòng đăng nhập.", icon="check")
             self.destroy()
-            self.logger.debug("Đã hủy cửa sổ đăng ký thành công.")
         else:
             CTkMessagebox(master=self, title="Lỗi", message=message, icon="cancel")
