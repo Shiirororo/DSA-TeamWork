@@ -303,7 +303,6 @@ class ProjectDetailScreen(ctk.CTkFrame):
                 CTkMessagebox(master=dialog, title="Lỗi", message="Không thể giao việc.", icon="cancel")
         
         ctk.CTkButton(dialog, text="Xác nhận", command=submit_assign).pack(pady=20)
-        ctk.CTkButton(dialog, text="Xác nhận", command=submit_assign).pack(pady=20)
 
     def open_manage_members_dialog(self):
         if self.project_data:
